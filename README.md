@@ -1,0 +1,4 @@
+# WCONIO.H
+WCONIO is a Borlands's CONIO.H emulation for Watcom C/C++ and OpenWatcom C/C++. WCONIO is built over existing console/text functions in Watcom's graph.h, so it is simple and stable.
+
+If you are already using Turbo/Borland CONIO.H in you DOS development, and want to go further than existing cputs and cprintf, such as supporting window, _setcursortype or textcolor... This is your choice.
