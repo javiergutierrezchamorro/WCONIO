@@ -446,6 +446,16 @@ void delay(unsigned int ms);
 #pragma pack(pop)
 
 
+#if (defined(__FLAT__))
+	#define wconio_int86 int386
+	#define wconio_int86x int386x
+#else
+	#define wconio_int86 int38
+	#define wconio_int86x int86x
+#endif
+
+
+
 /* ----------------------------------------------------------------------------------------------------------------- */
 void gettextinfo(struct text_info *__r)
 {
@@ -489,14 +499,33 @@ void clrscr(void)
 /* ----------------------------------------------------------------------------------------------------------------- */
 void delline(void)
 {
-	_scrolltextwindow(_GSCROLLUP);
+	//_scrolltextwindow(_GSCROLLUP);
+	union REGS r;
+
+
+	r.w.ax = 0x0601;
+	r.h.bh = ti.attribute;
+	r.h.cl = ti.winleft - 1;			/*  Left column number */
+	r.h.ch = wherey() + ti.wintop - 2;   /* Upper row number, */
+	r.h.dl = ti.winright - 1;		   /*  Right column number */
+	r.h.dh = ti.winbottom - 1;		  /* Lower row number */
+	wconio_int86(0x10, &r, &r);			/* Scroll up */
 }
 
 
 /* ----------------------------------------------------------------------------------------------------------------- */
 void insline(void)
 {
-	//ToDo
+	union REGS r;
+
+
+	r.w.ax = 0x0701;
+	r.h.bh = ti.attribute;
+	r.h.cl = ti.winleft - 1;			/*  Left column number */
+	r.h.ch = wherey() + ti.wintop - 2;   /* Upper row number, */
+	r.h.dl = ti.winright - 1;		   /*  Right column number */
+	r.h.dh = ti.winbottom - 1;		  /* Lower row number */
+	coniox_int86(0x10, &r, &r);			/* Scroll down */
 }
 
 
