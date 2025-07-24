@@ -450,7 +450,7 @@ void delay(unsigned int ms);
 	#define wconio_int86 int386
 	#define wconio_int86x int386x
 #else
-	#define wconio_int86 int38
+	#define wconio_int86 int86
 	#define wconio_int86x int86x
 #endif
 
@@ -504,11 +504,11 @@ void delline(void)
 
 
 	r.w.ax = 0x0601;
-	r.h.bh = ti.attribute;
-	r.h.cl = ti.winleft - 1;			/*  Left column number */
-	r.h.ch = wherey() + ti.wintop - 2;   /* Upper row number, */
-	r.h.dl = ti.winright - 1;		   /*  Right column number */
-	r.h.dh = ti.winbottom - 1;		  /* Lower row number */
+	r.h.bh = __ti.attribute;
+	r.h.cl = __ti.winleft - 1;			/*  Left column number */
+	r.h.ch = wherey() + __ti.wintop - 2;   /* Upper row number, */
+	r.h.dl = __ti.winright - 1;		   /*  Right column number */
+	r.h.dh = __ti.winbottom - 1;		  /* Lower row number */
 	wconio_int86(0x10, &r, &r);			/* Scroll up */
 }
 
@@ -520,12 +520,12 @@ void insline(void)
 
 
 	r.w.ax = 0x0701;
-	r.h.bh = ti.attribute;
-	r.h.cl = ti.winleft - 1;			/*  Left column number */
-	r.h.ch = wherey() + ti.wintop - 2;   /* Upper row number, */
-	r.h.dl = ti.winright - 1;		   /*  Right column number */
-	r.h.dh = ti.winbottom - 1;		  /* Lower row number */
-	coniox_int86(0x10, &r, &r);			/* Scroll down */
+	r.h.bh = __ti.attribute;
+	r.h.cl = __ti.winleft - 1;			/*  Left column number */
+	r.h.ch = wherey() + __ti.wintop - 2;   /* Upper row number, */
+	r.h.dl = __ti.winright - 1;		   /*  Right column number */
+	r.h.dh = __ti.winbottom - 1;		  /* Lower row number */
+	wconio_int86(0x10, &r, &r);			/* Scroll down */
 }
 
 
