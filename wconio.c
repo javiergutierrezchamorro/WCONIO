@@ -27,6 +27,9 @@ void main (void)
 	
 	
 	getch();
+	gotoxy(1, 20);
+	delline();
+	getch();
 	
 	_setcursortype(_NORMALCURSOR);
 }
