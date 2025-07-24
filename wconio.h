@@ -14,21 +14,6 @@ extern "C" {
 #endif
 
 
-#define outportb		outp
-#define outport			outpw
-#define outportd		outpd
-#define inportb			inp
-#define inport			inpw
-#define inportd			inpd
-
-#define peekb(s,o)			(*((unsigned char coniox_far *) MK_FP((s),(o))))
-#define peekw(s,o)			(*((unsigned short coniox_far *) MK_FP((s),(o))))
-#define peekl(s,o)			(*((unsigned long coniox_far *) MK_FP((s),(o))))
-#define pokeb(s,o,x)		(*((unsigned char coniox_far *) MK_FP((s),(o))) = (unsigned char)(x))
-#define pokew(s,o,x)		(*((unsigned short coniox_far *) MK_FP((s),(o))) = (unsigned short)(x))
-#define pokel(s,o,x)		(*((unsigned long coniox_far *) MK_FP((s),(o))) = (unsigned long)(x))
-
-
 #pragma pack(push)
 #pragma pack(1)
 
@@ -456,12 +441,6 @@ void delay(unsigned int ms);
 #define KEY_F9          67
 #define KEY_F10         68
 #define KEY_ESC 27
-#define MOUSE_CLICK     0x200
-#define MOUSE_DBLCLICK  0x201
-#define MOUSE_WHEELUP   0x202
-#define MOUSE_WHEELDOWN 0x203
-#define WINDOW_RESIZE   0x204
-
 
 
 #pragma pack(pop)
@@ -668,11 +647,13 @@ void window(int __left, int __top, int __right, int __bottom)
 
 /* ----------------------------------------------------------------------------------------------------------------- */
 //int cscanf(const char *__format, ...);
+//ToDo: Already available but not honoring windows
 
 
 
 /* ----------------------------------------------------------------------------------------------------------------- */
 //char *cgets(char *__str);
+//ToDo: Already available but not honoring windows
 
 
 #undef cprintf
@@ -715,9 +696,22 @@ char *getpass(const char *__prompt)
 //Already available in Watcom
 
 
+
 /* ----------------------------------------------------------------------------------------------------------------- */
-//int getche(void);
-//Already available but not honoring windows
+int getche(void)
+{
+	int ch;
+
+	ch = getch();
+	while (ch == 0)
+	{
+		getch();
+		ch = getch();
+	}
+	putch(ch);
+	return(ch);
+}
+
 
 
 /* ----------------------------------------------------------------------------------------------------------------- */
@@ -725,13 +719,25 @@ char *getpass(const char *__prompt)
 //Already available in Watcom
 
 
+
 /* ----------------------------------------------------------------------------------------------------------------- */
-//int putch(int __c);
-//Already available but not honoring windows
+int putch(int __c)
+{
+	char s[2];
+
+	//ToDo: Optimize implementation
+	s[0] = __c;
+	s[1] = 0;
+	cputs(s);
+	return(__c);
+}
+
 
 
 /* ----------------------------------------------------------------------------------------------------------------- */
 //int ungetch(int __ch);
+//Already available in Watcom
+
 
 
 /* ----------------------------------------------------------------------------------------------------------------- */
