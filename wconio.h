@@ -99,7 +99,7 @@ directvideo controls where your program's console output goes:
 0: Goes via ROM calls.
 1: (Default) Goes directly to video RAM
 */
-#define directvideo 1
+int directvideo = 1;
 #define _directvideo directvideo
 
 /**
@@ -467,7 +467,7 @@ void gettextinfo(struct text_info *__r)
 	__ti.curx = cur.col;
 	__ti.cury = cur.row;
 	
-	memcpy(&__r, &__ti, sizeof(struct text_info));
+	memcpy(__r, &__ti, sizeof(struct text_info));
 	//_gettextcursor
 }
 
@@ -479,9 +479,9 @@ void clreol(void)
 	char s[PRINTFBUF_SIZE];
 	struct rccoord cur;
 
+	cur = _gettextposition();
 	l = __ti.winright - __ti.winleft + 2 - cur.col;
 	s[l+1] = 0;
-	cur = _gettextposition();
 	memset(s, ' ', l);
 	cputs(s);
 	gotoxy(cur.col, cur.row);
@@ -531,26 +531,101 @@ void insline(void)
 
 
 /* ----------------------------------------------------------------------------------------------------------------- */
-int gettext(int __left, int __top, int __right, int __bottom, void* __destin)
+int gettext(int __left, int __top, int __right, int __bottom, void *__destin)
 {
-	//ToDo
-	return(0);
+	unsigned int width, height, i;
+	unsigned short seg = (__ti.currmode == MONO) ? 0xB000 : 0xB800;
+	char far *video = (char far *) MK_FP(seg, 0);
+	char *dest = (char *) __destin;
+	unsigned int sw = __ti.screenwidth;
+	unsigned int sh = __ti.screenheight;
+
+	if (__left < 1 || __top < 1 || __right > sw || __bottom > sh)
+	{
+		return 0;
+		}
+
+	width = __right - __left + 1;
+	height = __bottom - __top + 1;
+
+	for (i = 0; i < height; i++)
+	{
+		unsigned int offset = ((__top - 1 + i) * sw + (__left - 1)) << 1;
+		_fmemcpy(dest + (i * (width << 1)), (const void __far *)(video + offset), width << 1);
+	}
+	return 1;
 }
 
 
 /* ----------------------------------------------------------------------------------------------------------------- */
-int puttext(int __left, int __top, int __right, int __bottom, void *__source)
+int puttext(int __left, int __top, int __right, int __bottom,  void *__source)
 {
-	//ToDo
-	return(0);
+	unsigned int width, height, i;
+	unsigned short seg = (__ti.currmode == MONO) ? 0xB000 : 0xB800;
+	char far *video = (char far *) MK_FP(seg, 0);
+	const char *source = (const char *) __source;
+	unsigned int sw = __ti.screenwidth;
+	unsigned int sh = __ti.screenheight;
+
+	if (__left < 1 || __top < 1 || __right > sw || __bottom > sh)
+	{
+		return 0;
+	}
+
+	width = __right - __left + 1;
+	height = __bottom - __top + 1;
+
+	for (i = 0; i < height; i++)
+	{
+		unsigned int offset = ((__top - 1 + i) * sw + (__left - 1)) << 1;
+		_fmemcpy((void __far *)(video + offset), source + (i * (width << 1)), width << 1);
+	}
+	return 1;
 }
 
 
 /* ----------------------------------------------------------------------------------------------------------------- */
 int movetext(int __left, int __top, int __right, int __bottom, int __destleft, int __desttop)
 {
-	//ToDo
-	return(0);
+    unsigned int width, height, i;
+    unsigned short seg = (__ti.currmode == MONO) ? 0xB000 : 0xB800;
+    char far *video = (char far *) MK_FP(seg, 0);
+    unsigned int sw = __ti.screenwidth;
+    unsigned int sh = __ti.screenheight;
+
+    if (__left < 1 || __top < 1 || __right > sw || __bottom > sh)
+    {
+    	return 0;
+	}
+    if (__destleft < 1 || __desttop < 1 || (__destleft + (__right - __left)) > sw || (__desttop + (__bottom - __top)) > sh)
+    {
+    	return 0;
+	}
+
+    width = __right - __left + 1;
+    height = __bottom - __top + 1;
+
+    if (__desttop < __top)
+    {
+        /* Copiar hacia arriba: top -> bottom */
+        for (i = 0; i < height; i++)
+        {
+            unsigned int src_offset = ((__top - 1 + i) * sw + (__left - 1)) << 1;
+            unsigned int dst_offset = ((__desttop - 1 + i) * sw + (__destleft - 1)) << 1;
+            _fmemcpy((void __far *)(video + dst_offset), (void __far *)(video + src_offset), width << 1);
+        }
+    }
+    else
+    {
+        /* Copiar hacia abajo: bottom -> top */
+        for (i = height; i > 0; i--)
+        {
+            unsigned int src_offset = ((__top - 1 + i - 1) * sw + (__left - 1)) << 1;
+            unsigned int dst_offset = ((__desttop - 1 + i - 1) * sw + (__destleft - 1)) << 1;
+            _fmemcpy((void __far *)(video + dst_offset), (void __far *)(video + src_offset), width << 1);
+        }
+    }
+    return 1;
 }
 
 
@@ -756,8 +831,9 @@ int putch(int __c)
 
 	//ToDo: Optimize implementation
 	s[0] = __c;
-	s[1] = 0;
-	cputs(s);
+	//s[1] = 0;
+	//cputs(s);
+	_outmem(s, 1);
 	return(__c);
 }
 
