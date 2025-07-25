@@ -70,14 +70,12 @@ Colors which you can use in your application.
 enum text_modes
 {
 	/* DOS-compatible modes */
-	EXITMODE = -2,
 	LASTMODE = -1,
 	BW40 = 0,
 	C40 = 1,
 	BW80,
 	C80,
-	MONO = 7,
-	_ORIGMODE = 65      /* original mode at program startup */
+	MONO = 7
 };
 
 
@@ -733,7 +731,6 @@ void textmode(int __newmode)
 				break;
 			case BW80:
 			case C80:
-			case _ORIGMODE:
 			case MONO:
 			default:
 				__ti.screenwidth = 80;
@@ -796,8 +793,46 @@ int cputs(const char *__str)
 /* ----------------------------------------------------------------------------------------------------------------- */
 char *getpass(const char *__prompt)
 {
-	//ToDo
-	return(NULL);
+	static char str[PASS_MAX + 1];
+	int length = 0;
+	int ch = 0;
+	int x, y;
+
+	cputs(__prompt);
+	x = __ti.curx;
+	y = __ti.cury;
+
+	while (ch != '\r')
+	{
+		ch = getch();
+		if (ch == 0)
+		{
+			getch();
+		}
+		else
+		{
+			switch (ch)
+			{
+				case '\r':
+						break;
+				case '\b': /* backspace */
+						if (length > 0)
+						{
+							gotoxy(x + --length , y);
+							putch(' ');
+						}
+						break;
+				default:
+						if (length < PASS_MAX)
+						{
+								putch('*');
+								str[length++] = (char) ch;
+						}
+				}
+		}
+	}
+	str[length] = 0;
+	return(str);
 }
 
 
