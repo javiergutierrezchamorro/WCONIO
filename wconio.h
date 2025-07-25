@@ -460,15 +460,22 @@ void delay(unsigned int ms);
 void gettextinfo(struct text_info *__r)
 {
 	struct rccoord cur;
+	struct videoconfig vc;
 
 	_gettextwindow((short *) __ti.wintop, (short *) &__ti.winleft, (short *) &__ti.winbottom, (short *) &__ti.winright);
+
 	__ti.attribute = (_getbkcolor() << 4) | _gettextcolor();
+
 	cur = _gettextposition();
 	__ti.curx = cur.col;
 	__ti.cury = cur.row;
 	
+    _getvideoconfig(&vc);	
+    __ti.screenwidth = vc.numtextcols;
+    __ti.screenheight = vc.numtextrows;
+    __ti.currmode = vc.mode;
+	
 	memcpy(__r, &__ti, sizeof(struct text_info));
-	//_gettextcursor
 }
 
 
