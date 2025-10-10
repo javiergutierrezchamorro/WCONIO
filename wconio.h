@@ -21,7 +21,7 @@ extern "C" {
 Structure holding information about screen.
 @see gettextinfo
 */
-struct text_info
+extern struct text_info
 {
 	unsigned short winleft;
 	unsigned short wintop;
@@ -34,7 +34,7 @@ struct text_info
 	unsigned short screenwidth;		/**< screen height */
 	short curx;						/**< cursor coordinate x */
 	short cury;						/**< cursor coordinate y */
-} __ti = {1, 1, 80, 25, 7, 7, 3, 80, 25, 1, 1};
+} __ti = {1, 1, 80, 25, 7, 7, 3, 25, 80, 1, 1};
 
 /**
 Colors which you can use in your application.
@@ -97,7 +97,7 @@ directvideo controls where your program's console output goes:
 0: Goes via ROM calls.
 1: (Default) Goes directly to video RAM
 */
-int directvideo = 1;
+extern int directvideo = 1;
 #define _directvideo directvideo
 
 /**
@@ -460,7 +460,7 @@ void gettextinfo(struct text_info *__r)
 	struct rccoord cur;
 	struct videoconfig vc;
 
-	_gettextwindow((short *) __ti.wintop, (short *) &__ti.winleft, (short *) &__ti.winbottom, (short *) &__ti.winright);
+	_gettextwindow((short *) &__ti.wintop, (short *) &__ti.winleft, (short *) &__ti.winbottom, (short *) &__ti.winright);
 
 	__ti.attribute = (_getbkcolor() << 4) | _gettextcolor();
 
@@ -485,10 +485,15 @@ void clreol(void)
 	struct rccoord cur;
 
 	cur = _gettextposition();
-	l = __ti.winright - __ti.winleft + 2 - cur.col;
-	s[l+1] = 0;
+	
+	l = (__ti.winright >= cur.col) ? (__ti.winright - cur.col + 1) : 0;
+	if (l >= PRINTFBUF_SIZE)
+	{
+		l = PRINTFBUF_SIZE - 1;
+	}
 	memset(s, ' ', l);
-	cputs(s);
+	s[l] = 0;
+	cputs(s);	
 	gotoxy(cur.col, cur.row);
 }
 
@@ -548,7 +553,7 @@ int gettext(int __left, int __top, int __right, int __bottom, void *__destin)
 	if (__left < 1 || __top < 1 || __right > sw || __bottom > sh)
 	{
 		return 0;
-		}
+	}
 
 	width = __right - __left + 1;
 	height = __bottom - __top + 1;
@@ -773,12 +778,15 @@ int cprintf (const char *__format, ...)
 	char buffer[PRINTFBUF_SIZE];
 
 	va_start(ap, __format);
-	r = vsprintf(buffer, __format, ap);
+	r = _vsnprintf(buffer, sizeof(buffer), __format, ap); /* o vsnprintf si está disponible */
 	va_end(ap);
+	if (r < 0)
+	{
+		r = strlen(buffer);   /* si la impl no retorna el tamaño, aseguramos algo coherente */
+	}
 	cputs(buffer);
 	return(r);
 }
-
 
 #undef cputs
 /* ----------------------------------------------------------------------------------------------------------------- */
@@ -797,44 +805,45 @@ char *getpass(const char *__prompt)
 	int length = 0;
 	int ch = 0;
 	int x, y;
+	struct rccoord cur;
 
 	cputs(__prompt);
-	x = __ti.curx;
-	y = __ti.cury;
+	cur = _gettextposition();     /* posición real del cursor */
+	x = cur.col;
+	y = cur.row;
 
 	while (ch != '\r')
 	{
 		ch = getch();
 		if (ch == 0)
 		{
-			getch();
+			getch();                 /* consumir scancode, lo ignoramos */
 		}
 		else
 		{
-			switch (ch)
+			if (ch == '\b')
 			{
-				case '\r':
-						break;
-				case '\b': /* backspace */
-						if (length > 0)
-						{
-							gotoxy(x + --length , y);
-							putch(' ');
-						}
-						break;
-				default:
-						if (length < PASS_MAX)
-						{
-								putch('*');
-								str[length++] = (char) ch;
-						}
+				if (length > 0)
+				{
+					--length;
+					gotoxy(x + length, y);
+					putch(' ');
+					gotoxy(x + length, y);
 				}
+			}
+			else
+			{
+				if (length < PASS_MAX)
+				{
+					putch('*');
+					str[length++] = (char)ch;
+				}
+			}
 		}
 	}
 	str[length] = 0;
 	return(str);
 }
-
 
 
 /* ----------------------------------------------------------------------------------------------------------------- */
@@ -846,18 +855,20 @@ char *getpass(const char *__prompt)
 /* ----------------------------------------------------------------------------------------------------------------- */
 int getche(void)
 {
-	int ch;
+	int ch = getch();
+	int sc;
 
-	ch = getch();
-	while (ch == 0)
+	if (ch == 0)
 	{
-		getch();
-		ch = getch();
+		sc = getch();            /* scan code of extended key */
+		return (KEY_SPECIAL | sc);
 	}
-	putch(ch);
-	return(ch);
+	else
+	{
+		putch(ch);
+		return(ch);
+	}
 }
-
 
 
 /* ----------------------------------------------------------------------------------------------------------------- */
@@ -869,13 +880,10 @@ int getche(void)
 /* ----------------------------------------------------------------------------------------------------------------- */
 int putch(int __c)
 {
-	char s[2];
+	char chbuf;
+	chbuf = (char)__c;
 
-	//ToDo: Optimize implementation
-	s[0] = __c;
-	//s[1] = 0;
-	//cputs(s);
-	_outmem(s, 1);
+	_outmem(&chbuf, 1);
 	return(__c);
 }
 
