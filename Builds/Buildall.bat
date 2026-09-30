@@ -17,7 +17,7 @@ ren wconio.exe wconio0.exe
 
 rem *** DOS32 ***
 DEL wconio3.exe
-WCL386 -w3 -oneatx -ohirbk -ol -ol+ -oi -ei -zp16 -6r -fpi87 -fp6 -mf -s -ri -zm /bt=dos /l=pmodew /fhwe /"OPTION ELIMINATE" /"OPTION VFREMOVAL" ..\wconio.c
+WCL386 -w3 -oneatx -ohirbk -ol -ol+ -oi -ei -zp16 -6s -fpi87 -fp6 -mf -s -ri -zm /bt=dos /l=pmodewi /fhwe /"OPTION ELIMINATE" /"OPTION VFREMOVAL" ..\wconio.c
 ren wconio.exe wconio3.exe
 
 
