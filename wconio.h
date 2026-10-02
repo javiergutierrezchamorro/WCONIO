@@ -105,7 +105,7 @@ extern int directvideo = 1;
 Enables or disables scrolling in console I/O functions.
 _wscroll is a console I/O flag. You can use it to draw along the edges of a window without having the screen scroll.
 */
-#define _wrapon _wscroll
+#define _wscroll _wrapon
 
 
 /**
@@ -481,23 +481,28 @@ void gettextinfo(struct text_info *__r)
 /* ----------------------------------------------------------------------------------------------------------------- */
 void clreol(void)
 {
-	unsigned int l;
-	char s[PRINTFBUF_SIZE];
+	static char blanks[PRINTFBUF_SIZE];
+	int l;
 	struct rccoord cur;
 
-	cur = _gettextposition();
-	
-	l = (__ti.winright >= cur.col) ? (__ti.winright - cur.col + 1) : 0;
-	if (l >= PRINTFBUF_SIZE)
+	if (blanks[0] != ' ')
 	{
-		l = PRINTFBUF_SIZE - 1;
+		memset(blanks, ' ', sizeof(blanks));
 	}
-	memset(s, ' ', l);
-	s[l] = 0;
-	cputs(s);	
-	gotoxy(cur.col, cur.row);
-}
 
+	cur = _gettextposition();
+	l = (__ti.winright - __ti.winleft + 1) - cur.col + 1;
+	if (l > PRINTFBUF_SIZE)
+	{
+		l = PRINTFBUF_SIZE;
+	}
+	if (l > 0)
+	{
+		//_wrapon(_GWRAPOFF);
+		_outmem(blanks, (short) l);
+		_settextposition(cur.row, cur.col);
+	}
+}
 
 /* ----------------------------------------------------------------------------------------------------------------- */
 void clrscr(void)
@@ -671,6 +676,7 @@ void _setcursortype(int __cur_t)
 /* ----------------------------------------------------------------------------------------------------------------- */
 void textattr(int __newattr)
 {
+	__ti.attribute = __newattr;
 	_settextcolor((short) __newattr & 0xF);
 	_setbkcolor((short) ((__newattr >> 4) & 0xF));
 }
@@ -679,28 +685,21 @@ void textattr(int __newattr)
 /* ----------------------------------------------------------------------------------------------------------------- */
 void highvideo(void)
 {
-	short c;
-	
-	c = _gettextcolor();
-	_settextcolor(c & 0xF);
+	textcolor((__ti.attribute & 0x0F) | 0x08);
 }
 
 
 /* ----------------------------------------------------------------------------------------------------------------- */
 void lowvideo(void)
 {
-	short c;
-	
-	c = _gettextcolor();
-	_settextcolor(c & ~0x08);
+	textcolor(__ti.attribute & 0x07);
 }
-
 
 
 /* ----------------------------------------------------------------------------------------------------------------- */
 void normvideo(void)
 {
-	_settextcolor(__ti.normattr & 0xF);
+	textcolor(__ti.normattr & 0x0F);
 }
 
 
@@ -708,6 +707,7 @@ void normvideo(void)
 /* ----------------------------------------------------------------------------------------------------------------- */
 void textbackground(int __newcolor)
 {
+	__ti.attribute = (__ti.attribute & 0x0F) | ((__newcolor & 0x0F) << 4);
 	_setbkcolor((short) __newcolor);
 }
 
@@ -715,6 +715,7 @@ void textbackground(int __newcolor)
 /* ----------------------------------------------------------------------------------------------------------------- */
 void textcolor(int __newcolor)
 {
+	__ti.attribute = (__ti.attribute & 0xF0) | (__newcolor & 0x0F);
 	_settextcolor((short) __newcolor);
 }
 
@@ -728,6 +729,7 @@ void textmode(int __newmode)
 	}
 	if (__newmode != __ti.currmode)
 	{
+		__ti.currmode = __newmode;
 		switch (__newmode)
 		{
 			case BW40:
@@ -754,6 +756,15 @@ void textmode(int __newmode)
 /* ----------------------------------------------------------------------------------------------------------------- */
 void window(int __left, int __top, int __right, int __bottom)
 {
+	if (__left < 1 || __top < 1 || __right < __left || __bottom < __top
+		|| __right > __ti.screenwidth || __bottom > __ti.screenheight)
+	{
+		return;
+	}
+	__ti.winleft = __left;
+	__ti.wintop = __top;
+	__ti.winright = __right;
+	__ti.winbottom = __bottom;
 	_settextwindow((short) __top, (short) __left, (short) __bottom, (short) __right);
 }
 
@@ -779,15 +790,18 @@ int cprintf (const char *__format, ...)
 	char buffer[PRINTFBUF_SIZE];
 
 	va_start(ap, __format);
-	r = _vsnprintf(buffer, sizeof(buffer), __format, ap); /* o vsnprintf si está disponible */
+	r = _vsnprintf(buffer, sizeof(buffer), __format, ap);
 	va_end(ap);
+
+	buffer[PRINTFBUF_SIZE - 1] = 0;		/* por si se truncó */
 	if (r < 0)
 	{
-		r = strlen(buffer);   /* si la impl no retorna el tamaño, aseguramos algo coherente */
+		r = strlen(buffer);
 	}
-	cputs(buffer);
+	_outtext(buffer);
 	return(r);
 }
+
 
 #undef cputs
 /* ----------------------------------------------------------------------------------------------------------------- */
