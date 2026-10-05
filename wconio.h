@@ -108,6 +108,8 @@ _wscroll is a console I/O flag. You can use it to draw along the edges of a wind
 #define _wscroll _wrapon
 
 
+void inittextinfo(void);
+
 /**
 Gets text mode video information.
 gettextinfo fills in the text_info structure pointed to by r with the current text video information.
@@ -456,6 +458,21 @@ void delay(unsigned int ms);
 
 
 /* ----------------------------------------------------------------------------------------------------------------- */
+void inittextinfo(void)
+{
+	struct text_info ti;
+	union REGS r;
+
+	gettextinfo(&ti);			/* sincroniza __ti con el estado real */
+	r.h.ah = 0x08;				/* leer carácter y atributo en el cursor */
+	r.h.bh = 0;
+	wconio_int86(0x10, &r, &r);
+	__ti.normattr = r.h.ah;
+	textattr(__ti.normattr);
+}
+
+
+/* ----------------------------------------------------------------------------------------------------------------- */
 void gettextinfo(struct text_info *__r)
 {
 	struct rccoord cur;
@@ -567,7 +584,7 @@ int gettext(int __left, int __top, int __right, int __bottom, void *__destin)
 	for (i = 0; i < height; i++)
 	{
 		unsigned int offset = ((__top - 1 + i) * sw + (__left - 1)) << 1;
-		_fmemcpy(dest + (i * (width << 1)), (const void __far *)(video + offset), width << 1);
+		_fmemmove(dest + (i * (width << 1)), (const void __far *)(video + offset), width << 1);
 	}
 	return 1;
 }
@@ -594,7 +611,7 @@ int puttext(int __left, int __top, int __right, int __bottom,  void *__source)
 	for (i = 0; i < height; i++)
 	{
 		unsigned int offset = ((__top - 1 + i) * sw + (__left - 1)) << 1;
-		_fmemcpy((void __far *)(video + offset), source + (i * (width << 1)), width << 1);
+		_fmemmove((void __far *)(video + offset), source + (i * (width << 1)), width << 1);
 	}
 	return 1;
 }
@@ -648,6 +665,10 @@ int movetext(int __left, int __top, int __right, int __bottom, int __destleft, i
 /* ----------------------------------------------------------------------------------------------------------------- */
 void gotoxy(int __x, int __y)
 {
+	if (__x < 1 || __y < 1 || __x > (int) (__ti.winright - __ti.winleft + 1) || __y > (int) (__ti.winbottom - __ti.wintop + 1))
+	{
+		return;
+	}
 	_settextposition((short) __y, (short) __x);
 }
 
