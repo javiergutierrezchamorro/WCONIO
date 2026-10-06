@@ -15,6 +15,8 @@ extern "C" {
 #endif
 
 
+#define C4350 64
+
 #pragma pack(push)
 #pragma pack(1)
 
@@ -744,35 +746,36 @@ void textcolor(int __newcolor)
 /* ----------------------------------------------------------------------------------------------------------------- */
 void textmode(int __newmode)
 {
+	struct videoconfig vc;
+	short ok;
+
 	if (__newmode == LASTMODE)
 	{
 		__newmode = __ti.currmode;
 	}
 	if (__newmode != __ti.currmode)
 	{
-		__ti.currmode = __newmode;
-		switch (__newmode)
+		if (__newmode == C4350)
 		{
-			case BW40:
-			case C40:
-				__ti.screenwidth = 40;
-				__ti.screenheight = 25;
-				break;
-			case BW80:
-			case C80:
-			case MONO:
-			default:
-				__ti.screenwidth = 80;
-				__ti.screenheight = 25;
+			ok = _setvideomoderows(_TEXTC80, _MAXTEXTROWS);
 		}
-		_setvideomode((short) __newmode);
+		else
+		{
+			ok = _setvideomode((short) __newmode);
+		}
+		if (ok != 0)
+		{
+			_getvideoconfig(&vc);
+			__ti.currmode = (unsigned short) __newmode;
+			__ti.screenwidth = vc.numtextcols;
+			__ti.screenheight = vc.numtextrows;
+		}
 	}
 	window(1, 1, __ti.screenwidth, __ti.screenheight);
 	textattr(__ti.normattr);
 	clrscr();
 	_setcursortype(_NORMALCURSOR);
 }
-
 
 /* ----------------------------------------------------------------------------------------------------------------- */
 void window(int __left, int __top, int __right, int __bottom)
