@@ -24,7 +24,7 @@ extern "C" {
 Structure holding information about screen.
 @see gettextinfo
 */
-extern struct text_info
+struct text_info
 {
 	unsigned short winleft;
 	unsigned short wintop;
@@ -46,21 +46,21 @@ Colors which you can use in your application.
 #define __COLORS
 	typedef enum _COLORS
 	{
-		BLACK,			/**< black color */
-		BLUE,			/**< blue color */
-		GREEN,			/**< green color */
-		CYAN,			/**< cyan color */
-		RED,			/**< red color */
+		BLACK,		/**< black color */
+		BLUE,		/**< blue color */
+		GREEN,		/**< green color */
+		CYAN,		/**< cyan color */
+		RED,		/**< red color */
 		MAGENTA,		/**< magenta color */
-		BROWN,			/**< brown color */
+		BROWN,		/**< brown color */
 		LIGHTGRAY,		/**< light gray color */
 		DARKGRAY,		/**< dark gray color */
 		LIGHTBLUE,		/**< light blue color */
-		LIGHTGREEN,		/**< light green color */
-		LIGHTCYAN,		/**< light cyan color */
+		LIGHTGREEN,	/**< light green color */
+		LIGHTCYAN,	/**< light cyan color */
 		LIGHTRED,		/**< light red color */
-		LIGHTMAGENTA,	/**< light magenta color */
-		YELLOW,			/**< yellow color */
+		LIGHTMAGENTA,/**< light magenta color */
+		YELLOW,		/**< yellow color */
 		WHITE			/**< white color */
 	} COLORS;
 #endif
@@ -96,12 +96,13 @@ Predefined cursor types. */
 
 /**
 Controls de video output.
-directvideo controls where your program's console output goes:
-0: Goes via ROM calls.
-1: (Default) Goes directly to video RAM
+directvideo era una variable documentada para elegir entre salida por ROM BIOS
+o escritura directa a la VRAM, pero la implementación nunca la leía: cprintf,
+cputs y putch llaman a _outtext/_outmem de forma incondicional. Era código
+muerto, así que queda comentada por si se quiere implementar la vía BIOS.
 */
-extern int directvideo = 1;
-#define _directvideo directvideo
+//extern int directvideo = 1;
+//#define _directvideo directvideo
 
 /**
 Enables or disables scrolling in console I/O functions.
@@ -252,7 +253,7 @@ void highvideo(void);
 /**
 Selects low-intensity characters.
 lowvideo selects low-intensity characters by clearing the high-intensity bit of the currently selected foreground color.
-This function does not affect any characters currently onscreen. It affects only those characters displayed by functions that perform text mode, direct console output after this function is called.
+This function does not affect any characters currently onscreen. It affects only those characters displayed by functions that perform text mode, direct console output functions after this function is called.
 @see COLORS
 @see highvideo
 */
@@ -321,7 +322,7 @@ char *cgets(char *__str);
 /**
 Writes formatted output to the screen.
 cprintf accepts a series of arguments, applies to each a format specifier contained in the format string pointed to by format, and outputs the formatted data directly to the current text window on the screen. There must be the same number of format specifiers as arguments. For details details on format specifiers, see printf Format Specifiers.
-The string is written either directly to screen memory or by way of a BIOS call, depending on the value of the global variable _directvideo.
+The string is written directly to screen memory.
 Unlike fprintf and printf, cprintf does not translate linefeed characters (\n) into carriage-return/linefeed character pairs (\r\n). Tab characters (specified by \t) are not expanded into spaces.
 */
 int cprintf(const char *__format, ...);
@@ -330,7 +331,7 @@ int cprintf(const char *__format, ...);
 /**
 Writes a string to the screen.
 cputs writes the null-terminated string str to the current text window. It does not append a newline character.
-The string is written either directly to screen memory or by way of a BIOS call, depending on the value of the global variable _directvideo.
+The string is written directly to screen memory.
 Unlike puts, cputs does not translate linefeed characters (\n) into carriage-return/linefeed character pairs (\r\n).
 */
 int cputs(const char *__str);
@@ -338,28 +339,26 @@ int cputs(const char *__str);
 
 /**
 Reads a password.
-getpass reads a password from the system console after prompting with the null-terminated string prompt and disabling the echo. A pointer is returned to a null-terminated string of up to eight characters (not counting the null-terminator).
-@see cgets
+getpass reads a password from the system console after prompting with the null-terminated string prompt and disabling the echo. Every typed character is echoed as an asterisk, and backspace is supported.
+@see PASS_MAX
 @param prompt prompt which will be displayed to user
-@param str string for the password. <TT>str[0]</TT> have to contain
-length of the <TT>str</TT> - 3
-@returns <TT>&str[2]</TT>, the password will be stored in <TT>str</TT>
-beginning at <TT>str[2]</TT>, in <TT>str[1]</TT> will be length of the
-string without <TT>\\0</TT>, at <TT>str[2 + str[1]]</TT> will be \\0.
+@returns a pointer to a static null-terminated string holding the password,
+of up to PASS_MAX (8) characters. The buffer is reused on every call, so copy
+the result if you need to keep it.
 */
 char *getpass(const char *__prompt);
 
 
 /**
 Gets character from keyboard, does not echo to screen.
-getch reads a single character directly from the keyboard, without echoing to the screen.
+getch reads a single character directly from the keyboard, without echoing it to the screen.
 */
 int getch(void);
 
 
 /**
 Gets character from the keyboard, echoes to screen.
-getche reads a single character from the keyboard and echoes it to the current text window using direct video or BIOS.
+getche reads a single character from the keyboard and echoes it to the current text window using direct video output.
 */
 int getche(void);
 
@@ -376,8 +375,6 @@ Outputs character to screen.
 putch outputs the character c to the current text window. It is a text mode 
 function performing direct video output to the console. putch does not 
 translate linefeed characters (\n) into carriage-return/linefeed pairs.
-The string is written either directly to screen memory or by way of a BIOS 
-call, depending on the value of the global variable _directvideo.
 */
 int putch(int __c);
 
@@ -404,7 +401,6 @@ wherey returns the y-coordinate of the current cursor position (within the curre
 @returns cursor Y position
 */
 int wherey(void);
-
 
 
 /**
@@ -500,7 +496,7 @@ void gettextinfo(struct text_info *__r)
 /* ----------------------------------------------------------------------------------------------------------------- */
 void clreol(void)
 {
-	static char blanks[PRINTFBUF_SIZE];
+	char blanks[PRINTFBUF_SIZE];
 	int l;
 	struct rccoord cur;
 
@@ -540,11 +536,11 @@ void delline(void)
 
 	r.w.ax = 0x0601;
 	r.h.bh = __ti.attribute;
-	r.h.cl = __ti.winleft - 1;			/*  Left column number */
+	r.h.cl = __ti.winleft - 1;		/*  Left column number */
 	r.h.ch = wherey() + __ti.wintop - 2;   /* Upper row number, */
-	r.h.dl = __ti.winright - 1;		   /*  Right column number */
-	r.h.dh = __ti.winbottom - 1;		  /* Lower row number */
-	wconio_int86(0x10, &r, &r);			/* Scroll up */
+	r.h.dl = __ti.winright - 1;	   /*  Right column number */
+	r.h.dh = __ti.winbottom - 1;	  /* Lower row number */
+	wconio_int86(0x10, &r, &r);		/* Scroll up */
 }
 
 
@@ -556,11 +552,11 @@ void insline(void)
 
 	r.w.ax = 0x0701;
 	r.h.bh = __ti.attribute;
-	r.h.cl = __ti.winleft - 1;			/*  Left column number */
+	r.h.cl = __ti.winleft - 1;		/*  Left column number */
 	r.h.ch = wherey() + __ti.wintop - 2;   /* Upper row number, */
-	r.h.dl = __ti.winright - 1;		   /*  Right column number */
-	r.h.dh = __ti.winbottom - 1;		  /* Lower row number */
-	wconio_int86(0x10, &r, &r);			/* Scroll down */
+	r.h.dl = __ti.winright - 1;	   /*  Right column number */
+	r.h.dh = __ti.winbottom - 1;	  /* Lower row number */
+	wconio_int86(0x10, &r, &r);		/* Scroll down */
 }
 
 
@@ -575,7 +571,7 @@ int gettext(int __left, int __top, int __right, int __bottom, void *__destin)
 	unsigned int sw = __ti.screenwidth;
 	unsigned int sh = __ti.screenheight;
 
-	if (__left < 1 || __top < 1 || __right > sw || __bottom > sh)
+	if (__left < 1 || __top < 1 || __left > __right || __top > __bottom || __right > sw || __bottom > sh)
 	{
 		return 0;
 	}
@@ -586,7 +582,7 @@ int gettext(int __left, int __top, int __right, int __bottom, void *__destin)
 	for (i = 0; i < height; i++)
 	{
 		unsigned int offset = ((__top - 1 + i) * sw + (__left - 1)) << 1;
-		_fmemmove(dest + (i * (width << 1)), (const void __far *)(video + offset), width << 1);
+		_fmemcpy(dest + (i * (width << 1)), (const void __far *)(video + offset), width << 1);
 	}
 	return 1;
 }
@@ -602,7 +598,7 @@ int puttext(int __left, int __top, int __right, int __bottom,  void *__source)
 	unsigned int sw = __ti.screenwidth;
 	unsigned int sh = __ti.screenheight;
 
-	if (__left < 1 || __top < 1 || __right > sw || __bottom > sh)
+	if (__left < 1 || __top < 1 || __left > __right || __top > __bottom || __right > sw || __bottom > sh)
 	{
 		return 0;
 	}
@@ -613,7 +609,7 @@ int puttext(int __left, int __top, int __right, int __bottom,  void *__source)
 	for (i = 0; i < height; i++)
 	{
 		unsigned int offset = ((__top - 1 + i) * sw + (__left - 1)) << 1;
-		_fmemmove((void __far *)(video + offset), source + (i * (width << 1)), width << 1);
+		_fmemcpy((void __far *)(video + offset), source + (i * (width << 1)), width << 1);
 	}
 	return 1;
 }
@@ -628,7 +624,7 @@ int movetext(int __left, int __top, int __right, int __bottom, int __destleft, i
     unsigned int sw = __ti.screenwidth;
     unsigned int sh = __ti.screenheight;
 
-    if (__left < 1 || __top < 1 || __right > sw || __bottom > sh)
+    if (__left < 1 || __top < 1 || __left > __right || __top > __bottom || __right > sw || __bottom > sh)
     {
     	return 0;
 	}
@@ -817,7 +813,7 @@ int cprintf (const char *__format, ...)
 	r = _vsnprintf(buffer, sizeof(buffer), __format, ap);
 	va_end(ap);
 
-	buffer[PRINTFBUF_SIZE - 1] = 0;		/* por si se truncó */
+	//buffer[PRINTFBUF_SIZE - 1] = 0;	/* redundante: _vsnprintf siempre termina en 0 */
 	if (r < 0)
 	{
 		r = strlen(buffer);
@@ -840,11 +836,12 @@ int cputs(const char *__str)
 /* ----------------------------------------------------------------------------------------------------------------- */
 char *getpass(const char *__prompt)
 {
-	static char str[PASS_MAX + 1];
+	char str[PASS_MAX + 1];
 	int length = 0;
 	int ch = 0;
 	int x, y;
 	struct rccoord cur;
+
 
 	cputs(__prompt);
 	cur = _gettextposition();     /* posición real del cursor */
@@ -953,23 +950,9 @@ int wherey(void)
 	return((int) cur.row);
 }
 
-
 /* ----------------------------------------------------------------------------------------------------------------- */
 //void delay(unsigned int ms)
 //Already available in Watcom
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -977,5 +960,4 @@ int wherey(void)
 }
 #endif
 
-#endif /* _WONIO_H_ */
-
+#endif /* _WCONIO_H_ */
