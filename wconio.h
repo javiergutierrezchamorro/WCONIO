@@ -164,7 +164,7 @@ Each position onscreen takes 2 bytes of memory: The first byte is the character 
 @param bottom Bottom coordinate of the rectangle, inclusive, starting from 1.
 @param buf You have to pass buffer of size <TT>(right - left + 1) * (bottom - top + 1) * sizeof(char_info)</TT>.
 */
-int gettext(int __left, int __top, int __right, int __bottom, void *__destin);
+int gettext(int __left, int __top, int __right, int __bottom, void __far *__destin);
 
 
 /**
@@ -182,7 +182,7 @@ puttext is a text mode function performing direct video output.
 @param bottom Bottom coordinate of the rectangle, inclusive, starting from 1.
 @param buf You have to pass buffer of size <TT>(right - left + 1) * (bottom - top + 1) * sizeof(char_info)</TT>.
 */
-int puttext(int __left, int __top, int __right, int __bottom, void *__source);
+int puttext(int __left, int __top, int __right, int __bottom, void __far *__source);
 
 
 /**
@@ -558,12 +558,12 @@ void insline(void)
 
 
 /* ----------------------------------------------------------------------------------------------------------------- */
-int gettext(int __left, int __top, int __right, int __bottom, void *__destin)
+int gettext(int __left, int __top, int __right, int __bottom, void __far *__destin)
 {
 	unsigned int width, height, i;
 	unsigned short seg = (__ti.currmode == MONO) ? 0xB000 : 0xB800;
 	char far *video = (char far *) MK_FP(seg, 0);
-	char *dest = (char *) __destin;
+	char __far *dest = (char __far *) __destin;
 	unsigned int sw = __ti.screenwidth;
 	unsigned int sh = __ti.screenheight;
 
@@ -585,12 +585,12 @@ int gettext(int __left, int __top, int __right, int __bottom, void *__destin)
 
 
 /* ----------------------------------------------------------------------------------------------------------------- */
-int puttext(int __left, int __top, int __right, int __bottom,  void *__source)
+int puttext(int __left, int __top, int __right, int __bottom, void __far *__source)
 {
 	unsigned int width, height, i;
 	unsigned short seg = (__ti.currmode == MONO) ? 0xB000 : 0xB800;
 	char far *video = (char far *) MK_FP(seg, 0);
-	const char *source = (const char *) __source;
+	const char __far *source = (const char __far *) __source;
 	unsigned int sw = __ti.screenwidth;
 	unsigned int sh = __ti.screenheight;
 
@@ -717,7 +717,7 @@ void lowvideo(void)
 /* ----------------------------------------------------------------------------------------------------------------- */
 void normvideo(void)
 {
-	textcolor(__ti.normattr & 0x0F);
+	textattr(__ti.normattr);
 }
 
 
@@ -812,7 +812,7 @@ int cprintf (const char *__format, ...)
 	r = _vsnprintf(buffer, sizeof(buffer), __format, ap);
 	va_end(ap);
 
-	//buffer[PRINTFBUF_SIZE - 1] = 0;	/* redundante: _vsnprintf siempre termina en 0 */
+	buffer[PRINTFBUF_SIZE - 1] = 0;		/* _vsnprintf (estilo Microsoft) no termina en 0 si trunca */
 	if (r < 0)
 	{
 		r = strlen(buffer);
