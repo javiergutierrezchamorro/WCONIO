@@ -97,9 +97,9 @@ Predefined cursor types. */
 /**
 Controls de video output.
 directvideo era una variable documentada para elegir entre salida por ROM BIOS
-o escritura directa a la VRAM, pero la implementación nunca la leía: cprintf,
-cputs y putch llaman a _outtext/_outmem de forma incondicional. Era código
-muerto, así que queda comentada por si se quiere implementar la vía BIOS.
+o escritura directa a la VRAM, pero la implementacion nunca la leia: cprintf,
+cputs y putch llaman a _outtext/_outmem de forma incondicional. Era codigo
+muerto, asi que queda comentada por si se quiere implementar la via BIOS.
 */
 //extern int directvideo = 1;
 //#define _directvideo directvideo
@@ -462,7 +462,7 @@ void inittextinfo(void)
 	union REGS r;
 
 	gettextinfo(&ti);			/* sincroniza __ti con el estado real */
-	r.h.ah = 0x08;				/* leer carácter y atributo en el cursor */
+	r.h.ah = 0x08;				/* leer caracter y atributo en el cursor */
 	r.h.bh = 0;
 	wconio_int86(0x10, &r, &r);
 	__ti.normattr = r.h.ah;
@@ -500,11 +500,6 @@ void clreol(void)
 	int l;
 	struct rccoord cur;
 
-	if (blanks[0] != ' ')
-	{
-		memset(blanks, ' ', sizeof(blanks));
-	}
-
 	cur = _gettextposition();
 	l = (__ti.winright - __ti.winleft + 1) - cur.col + 1;
 	if (l > PRINTFBUF_SIZE)
@@ -513,6 +508,7 @@ void clreol(void)
 	}
 	if (l > 0)
 	{
+		memset(blanks, ' ', l);
 		//_wrapon(_GWRAPOFF);
 		_outmem(blanks, (short) l);
 		_settextposition(cur.row, cur.col);
@@ -636,6 +632,9 @@ int movetext(int __left, int __top, int __right, int __bottom, int __destleft, i
     width = __right - __left + 1;
     height = __bottom - __top + 1;
 
+    /* _fmemmove: seguro tambien ante solape horizontal dentro de la misma */
+    /* fila (p.ej. mover a la derecha), que la copia arriba/abajo no cubre */
+
     if (__desttop < __top)
     {
         /* Copiar hacia arriba: top -> bottom */
@@ -643,7 +642,7 @@ int movetext(int __left, int __top, int __right, int __bottom, int __destleft, i
         {
             unsigned int src_offset = ((__top - 1 + i) * sw + (__left - 1)) << 1;
             unsigned int dst_offset = ((__desttop - 1 + i) * sw + (__destleft - 1)) << 1;
-            _fmemcpy((void __far *)(video + dst_offset), (void __far *)(video + src_offset), width << 1);
+            _fmemmove((void __far *)(video + dst_offset), (void __far *)(video + src_offset), width << 1);
         }
     }
     else
@@ -653,7 +652,7 @@ int movetext(int __left, int __top, int __right, int __bottom, int __destleft, i
         {
             unsigned int src_offset = ((__top - 1 + i - 1) * sw + (__left - 1)) << 1;
             unsigned int dst_offset = ((__desttop - 1 + i - 1) * sw + (__destleft - 1)) << 1;
-            _fmemcpy((void __far *)(video + dst_offset), (void __far *)(video + src_offset), width << 1);
+            _fmemmove((void __far *)(video + dst_offset), (void __far *)(video + src_offset), width << 1);
         }
     }
     return 1;
@@ -836,15 +835,14 @@ int cputs(const char *__str)
 /* ----------------------------------------------------------------------------------------------------------------- */
 char *getpass(const char *__prompt)
 {
-	char str[PASS_MAX + 1];
+	static char str[PASS_MAX + 1];	/* obligatorio: se devuelve str, debe sobrevivir a la llamada */
 	int length = 0;
 	int ch = 0;
 	int x, y;
 	struct rccoord cur;
 
-
 	cputs(__prompt);
-	cur = _gettextposition();     /* posición real del cursor */
+	cur = _gettextposition();     /* posicion real del cursor */
 	x = cur.col;
 	y = cur.row;
 
@@ -857,6 +855,10 @@ char *getpass(const char *__prompt)
 		}
 		else
 		{
+			if (ch == '\r')
+			{
+				break;				/* sin esto, el INTRO se guardaba en la contrasena */
+			}
 			if (ch == '\b')
 			{
 				if (length > 0)
@@ -953,6 +955,7 @@ int wherey(void)
 /* ----------------------------------------------------------------------------------------------------------------- */
 //void delay(unsigned int ms)
 //Already available in Watcom
+
 
 
 
