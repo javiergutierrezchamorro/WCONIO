@@ -65,7 +65,7 @@ Colors which you can use in your application.
 	} COLORS;
 #endif
 
-#define BLINK			128 
+#define BLINK			128		/* attribute bit 7: blinking text. Add it to a text color or to an attribute */
 #define PASS_MAX		8
 #define PRINTFBUF_SIZE	255
 
@@ -475,10 +475,13 @@ void gettextinfo(struct text_info *__r)
 {
 	struct rccoord cur;
 	struct videoconfig vc;
+	short sFg;
 
 	_gettextwindow((short *) &__ti.wintop, (short *) &__ti.winleft, (short *) &__ti.winbottom, (short *) &__ti.winright);
 
-	__ti.attribute = (_getbkcolor() << 4) | _gettextcolor();
+	/* Watcom returns a blinking text color as color + 16, the attribute holds it in bit 7 */
+	sFg = _gettextcolor();
+	__ti.attribute = (unsigned short) ((_getbkcolor() << 4) | (sFg & 0x0F) | ((sFg & 16) ? BLINK : 0));
 
 	cur = _gettextposition();
 	__ti.curx = cur.col;
@@ -694,23 +697,25 @@ void _setcursortype(int __cur_t)
 /* ----------------------------------------------------------------------------------------------------------------- */
 void textattr(int __newattr)
 {
+	/* Borland attribute: bits 0-3 text color, bits 4-6 background, bit 7 blink. */
+	/* Watcom: text color 0-15, +16 to blink; background 0-7 */
 	__ti.attribute = __newattr;
-	_settextcolor((short) __newattr & 0xF);
-	_setbkcolor((short) ((__newattr >> 4) & 0xF));
+	_settextcolor((short) ((__newattr & 0x0F) | ((__newattr & BLINK) ? 16 : 0)));
+	_setbkcolor((long) ((__newattr >> 4) & 0x07));
 }
 
 
 /* ----------------------------------------------------------------------------------------------------------------- */
 void highvideo(void)
 {
-	textcolor((__ti.attribute & 0x0F) | 0x08);
+	textcolor((__ti.attribute & 0x8F) | 0x08);
 }
 
 
 /* ----------------------------------------------------------------------------------------------------------------- */
 void lowvideo(void)
 {
-	textcolor(__ti.attribute & 0x07);
+	textcolor(__ti.attribute & 0x87);
 }
 
 
@@ -725,16 +730,15 @@ void normvideo(void)
 /* ----------------------------------------------------------------------------------------------------------------- */
 void textbackground(int __newcolor)
 {
-	__ti.attribute = (__ti.attribute & 0x0F) | ((__newcolor & 0x0F) << 4);
-	_setbkcolor((short) __newcolor);
+	textattr((__ti.attribute & 0x8F) | ((__newcolor & 0x07) << 4));
 }
 
 
 /* ----------------------------------------------------------------------------------------------------------------- */
 void textcolor(int __newcolor)
 {
-	__ti.attribute = (__ti.attribute & 0xF0) | (__newcolor & 0x0F);
-	_settextcolor((short) __newcolor);
+	/* The color may carry BLINK, so the background is kept and the rest comes from the new color */
+	textattr((__ti.attribute & 0x70) | (__newcolor & 0x8F));
 }
 
 
@@ -837,7 +841,7 @@ char *getpass(const char *__prompt)
 {
 	static char str[PASS_MAX + 1];	/* obligatorio: se devuelve str, debe sobrevivir a la llamada */
 	int length = 0;
-	int ch = 0;
+	int ch;
 	int x, y;
 	struct rccoord cur;
 
@@ -846,37 +850,31 @@ char *getpass(const char *__prompt)
 	x = cur.col;
 	y = cur.row;
 
-	while (ch != '\r')
+	for (;;)
 	{
 		ch = getch();
+		if (ch == '\r')
+		{
+			break;				/* sin esto, el INTRO se guardaba en la contrasena */
+		}
 		if (ch == 0)
 		{
-			getch();                 /* consumir scancode, lo ignoramos */
+			getch();			/* consumir scancode, lo ignoramos */
 		}
-		else
+		else if (ch == '\b')
 		{
-			if (ch == '\r')
+			if (length > 0)
 			{
-				break;				/* sin esto, el INTRO se guardaba en la contrasena */
+				--length;
+				gotoxy(x + length, y);
+				putch(' ');
+				gotoxy(x + length, y);
 			}
-			if (ch == '\b')
-			{
-				if (length > 0)
-				{
-					--length;
-					gotoxy(x + length, y);
-					putch(' ');
-					gotoxy(x + length, y);
-				}
-			}
-			else
-			{
-				if (length < PASS_MAX)
-				{
-					putch('*');
-					str[length++] = (char)ch;
-				}
-			}
+		}
+		else if (length < PASS_MAX)
+		{
+			putch('*');
+			str[length++] = (char)ch;
 		}
 	}
 	str[length] = 0;
