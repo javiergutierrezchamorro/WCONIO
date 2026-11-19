@@ -10,6 +10,7 @@
  *   - Prefer _outmem over _outtext whenever the length is known
  *   - gettext/puttext/movetext use direct B800/B000 access (fastest path).
  *   - delline/insline use BIOS scroll (correct Borland semantics; _scrolltextwindow scrolls the whole window).
+ *   - Borland _wscroll variable implemented; output functions sync it to Watcom _wrapon().
  *     (faster, no control-character interpretation, no extra scan).
  *   - Many small helpers marked inline.
  *   - Cleaner gettextinfo() (no aliasing into packed struct fields).
@@ -109,19 +110,24 @@ Predefined cursor types. */
 
 
 /**
- * directvideo was a documented variable to choose between ROM BIOS output
- * or direct VRAM writes. The original implementation never read it:
- * cprintf, cputs and putch always call _outmem/_outtext. Left commented
- * in case a BIOS path is implemented later.
+ * directvideo was a documented Borland variable to choose between ROM BIOS
+ * output or direct VRAM writes. The implementation never read it (output
+ * always goes through _outmem/_outtext). Left commented for reference.
  */
 /* extern int directvideo = 1; */
 /* #define _directvideo directvideo */
 
 /**
- * Enables or disables scrolling in console I/O functions.
- * Mapped to Watcom's _wrapon. Useful to draw on window edges without scrolling.
+ * Borland CONIO compatibility variable.
+ * Controls whether the text window scrolls when output goes past the bottom
+ * (and, via Watcom's engine, whether text wraps at the right edge).
+ *   1 = scroll / wrap enabled (Borland default)
+ *   0 = do not scroll / truncate at edges (useful for status lines, borders)
+ *
+ * The output functions (cputs, cprintf, putch, clreol) read this variable
+ * and call _wrapon() accordingly so the setting actually affects output.
  */
-#define _wscroll _wrapon
+int _wscroll = 1;
 
 
 void inittextinfo(void);
@@ -531,6 +537,7 @@ inline void clreol(void)
 	if (l > 0) {
 		memset(blanks, ' ', l);
 		/* _outmem is preferred: known length, no control-char interpretation */
+		_wrapon(_wscroll ? _GWRAPON : _GWRAPOFF);
 		_outmem(blanks, (short)l);
 		_settextposition(cur.row, cur.col);
 	}
@@ -852,6 +859,7 @@ int cprintf(const char *__format, ...)
 	if (r < 0)
 		r = (int)strlen(buffer);
 
+	_wrapon(_wscroll ? _GWRAPON : _GWRAPOFF);
 	_outmem(buffer, (short)r);
 	return r;
 }
@@ -867,6 +875,7 @@ int cprintf(const char *__format, ...)
 inline int cputs(const char *__str)
 {
 	size_t len = strlen(__str);
+	_wrapon(_wscroll ? _GWRAPON : _GWRAPOFF);
 	_outmem((char *)__str, (short)len);
 	return (int)len;
 }
@@ -940,6 +949,7 @@ inline int getche(void)
 inline int putch(int __c)
 {
 	char chbuf = (char)__c;
+	_wrapon(_wscroll ? _GWRAPON : _GWRAPOFF);
 	_outmem(&chbuf, 1);
 	return __c;
 }
