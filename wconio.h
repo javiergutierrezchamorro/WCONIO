@@ -2,6 +2,20 @@
 #ifndef _WCONIO_H_
 #define _WCONIO_H_
 
+/*
+ * WCONIO - Borland-compatible CONIO.H emulation for Watcom / Open Watcom
+ *
+ * Built on top of the text-mode services in <graph.h>.
+ * Optimisations applied:
+ *   - Prefer _outmem over _outtext whenever the length is known
+ *   - gettext/puttext/movetext use direct B800/B000 access (fastest path).
+ *   - delline/insline use BIOS scroll (correct Borland semantics; _scrolltextwindow scrolls the whole window).
+ *     (faster, no control-character interpretation, no extra scan).
+ *   - Many small helpers marked inline.
+ *   - Cleaner gettextinfo() (no aliasing into packed struct fields).
+ *   - Clarified BIOS coordinate calculations in delline/insline.
+ *   - English comments throughout.
+ */
 
 #include <i86.h>
 #include <graph.h>
@@ -31,10 +45,10 @@ struct text_info
 	unsigned short winright;
 	unsigned short winbottom;
 	unsigned short attribute;		/**< current text attribute */
-	unsigned short normattr;		/**< original value of text attribute after start of the application. If you don't called the <TT>inittextinfo</TT> on the beginning of the application, this always will be black background and light gray foreground */
+	unsigned short normattr;		/**< original text attribute at program start. If inittextinfo() was never called it defaults to black background + light-gray foreground */
 	unsigned short currmode;
-	unsigned short screenheight;	/**< screen width */
-	unsigned short screenwidth;		/**< screen height */
+	unsigned short screenheight;	/**< screen height (rows) */
+	unsigned short screenwidth;		/**< screen width (columns) */
 	short curx;						/**< cursor coordinate x */
 	short cury;						/**< cursor coordinate y */
 } __ti = {1, 1, 80, 25, 7, 7, 3, 25, 80, 1, 1};
@@ -95,19 +109,18 @@ Predefined cursor types. */
 
 
 /**
-Controls de video output.
-directvideo era una variable documentada para elegir entre salida por ROM BIOS
-o escritura directa a la VRAM, pero la implementacion nunca la leia: cprintf,
-cputs y putch llaman a _outtext/_outmem de forma incondicional. Era codigo
-muerto, asi que queda comentada por si se quiere implementar la via BIOS.
-*/
-//extern int directvideo = 1;
-//#define _directvideo directvideo
+ * directvideo was a documented variable to choose between ROM BIOS output
+ * or direct VRAM writes. The original implementation never read it:
+ * cprintf, cputs and putch always call _outmem/_outtext. Left commented
+ * in case a BIOS path is implemented later.
+ */
+/* extern int directvideo = 1; */
+/* #define _directvideo directvideo */
 
 /**
-Enables or disables scrolling in console I/O functions.
-_wscroll is a console I/O flag. You can use it to draw along the edges of a window without having the screen scroll.
-*/
+ * Enables or disables scrolling in console I/O functions.
+ * Mapped to Watcom's _wrapon. Useful to draw on window edges without scrolling.
+ */
 #define _wscroll _wrapon
 
 
@@ -456,13 +469,13 @@ void delay(unsigned int ms);
 
 
 /* ----------------------------------------------------------------------------------------------------------------- */
-void inittextinfo(void)
+inline void inittextinfo(void)
 {
 	struct text_info ti;
 	union REGS r;
 
-	gettextinfo(&ti);			/* sincroniza __ti con el estado real */
-	r.h.ah = 0x08;				/* leer caracter y atributo en el cursor */
+	gettextinfo(&ti);               /* sync __ti with the real hardware state */
+	r.h.ah = 0x08;                  /* BIOS: read character & attribute at cursor */
 	r.h.bh = 0;
 	wconio_int86(0x10, &r, &r);
 	__ti.normattr = r.h.ah;
@@ -471,33 +484,41 @@ void inittextinfo(void)
 
 
 /* ----------------------------------------------------------------------------------------------------------------- */
-void gettextinfo(struct text_info *__r)
+inline void gettextinfo(struct text_info *__r)
 {
 	struct rccoord cur;
 	struct videoconfig vc;
+	short top, left, bottom, right;
 	short sFg;
 
-	_gettextwindow((short *) &__ti.wintop, (short *) &__ti.winleft, (short *) &__ti.winbottom, (short *) &__ti.winright);
+	/* Prefer local variables instead of casting into the packed struct fields */
+	_gettextwindow(&top, &left, &bottom, &right);
+	__ti.wintop    = (unsigned short)top;
+	__ti.winleft   = (unsigned short)left;
+	__ti.winbottom = (unsigned short)bottom;
+	__ti.winright  = (unsigned short)right;
 
-	/* Watcom returns a blinking text color as color + 16, the attribute holds it in bit 7 */
+	/* Watcom encodes blink as color + 16; Borland-style attribute uses bit 7 */
 	sFg = _gettextcolor();
-	__ti.attribute = (unsigned short) ((_getbkcolor() << 4) | (sFg & 0x0F) | ((sFg & 16) ? BLINK : 0));
+	__ti.attribute = (unsigned short)((_getbkcolor() << 4) |
+	                                  (sFg & 0x0F) |
+	                                  ((sFg & 16) ? BLINK : 0));
 
 	cur = _gettextposition();
 	__ti.curx = cur.col;
 	__ti.cury = cur.row;
-	
-    _getvideoconfig(&vc);	
-    __ti.screenwidth = vc.numtextcols;
-    __ti.screenheight = vc.numtextrows;
-    __ti.currmode = vc.mode;
-	
+
+	_getvideoconfig(&vc);
+	__ti.screenwidth  = vc.numtextcols;
+	__ti.screenheight = vc.numtextrows;
+	__ti.currmode     = vc.mode;
+
 	memcpy(__r, &__ti, sizeof(struct text_info));
 }
 
 
 /* ----------------------------------------------------------------------------------------------------------------- */
-void clreol(void)
+inline void clreol(void)
 {
 	char blanks[PRINTFBUF_SIZE];
 	int l;
@@ -506,56 +527,58 @@ void clreol(void)
 	cur = _gettextposition();
 	l = (__ti.winright - __ti.winleft + 1) - cur.col + 1;
 	if (l > PRINTFBUF_SIZE)
-	{
 		l = PRINTFBUF_SIZE;
-	}
-	if (l > 0)
-	{
+	if (l > 0) {
 		memset(blanks, ' ', l);
-		//_wrapon(_GWRAPOFF);
-		_outmem(blanks, (short) l);
+		/* _outmem is preferred: known length, no control-char interpretation */
+		_outmem(blanks, (short)l);
 		_settextposition(cur.row, cur.col);
 	}
 }
 
 /* ----------------------------------------------------------------------------------------------------------------- */
-void clrscr(void)
+inline void clrscr(void)
 {
 	_clearscreen(_GWINDOW);
 }
 
 
-
 /* ----------------------------------------------------------------------------------------------------------------- */
-void delline(void)
+/*
+ * Scroll the text window up by one line starting at the cursor row.
+ * BIOS AH=06h, AL=1. Coordinates are 0-based for INT 10h.
+ * wherey() is 1-based relative to the current text window.
+ */
+inline void delline(void)
 {
-	//_scrolltextwindow(_GSCROLLUP);
 	union REGS r;
 
-
-	r.w.ax = 0x0601;
-	r.h.bh = __ti.attribute;
-	r.h.cl = __ti.winleft - 1;		/*  Left column number */
-	r.h.ch = wherey() + __ti.wintop - 2;   /* Upper row number, */
-	r.h.dl = __ti.winright - 1;	   /*  Right column number */
-	r.h.dh = __ti.winbottom - 1;	  /* Lower row number */
-	wconio_int86(0x10, &r, &r);		/* Scroll up */
+	r.w.ax = 0x0601;                                    /* scroll up 1 line */
+	r.h.bh = (unsigned char)__ti.attribute;
+	r.h.cl = (unsigned char)(__ti.winleft - 1);         /* left column (0-based) */
+	r.h.ch = (unsigned char)(wherey() + __ti.wintop - 2); /* upper row (0-based) */
+	r.h.dl = (unsigned char)(__ti.winright - 1);        /* right column */
+	r.h.dh = (unsigned char)(__ti.winbottom - 1);       /* lower row */
+	wconio_int86(0x10, &r, &r);
 }
 
 
 /* ----------------------------------------------------------------------------------------------------------------- */
-void insline(void)
+/*
+ * Insert a blank line at the cursor row (scroll the rest of the window down).
+ * BIOS AH=07h, AL=1.
+ */
+inline void insline(void)
 {
 	union REGS r;
 
-
-	r.w.ax = 0x0701;
-	r.h.bh = __ti.attribute;
-	r.h.cl = __ti.winleft - 1;		/*  Left column number */
-	r.h.ch = wherey() + __ti.wintop - 2;   /* Upper row number, */
-	r.h.dl = __ti.winright - 1;	   /*  Right column number */
-	r.h.dh = __ti.winbottom - 1;	  /* Lower row number */
-	wconio_int86(0x10, &r, &r);		/* Scroll down */
+	r.w.ax = 0x0701;                                    /* scroll down 1 line */
+	r.h.bh = (unsigned char)__ti.attribute;
+	r.h.cl = (unsigned char)(__ti.winleft - 1);
+	r.h.ch = (unsigned char)(wherey() + __ti.wintop - 2);
+	r.h.dl = (unsigned char)(__ti.winright - 1);
+	r.h.dh = (unsigned char)(__ti.winbottom - 1);
+	wconio_int86(0x10, &r, &r);
 }
 
 
@@ -635,12 +658,12 @@ int movetext(int __left, int __top, int __right, int __bottom, int __destleft, i
     width = __right - __left + 1;
     height = __bottom - __top + 1;
 
-    /* _fmemmove: seguro tambien ante solape horizontal dentro de la misma */
-    /* fila (p.ej. mover a la derecha), que la copia arriba/abajo no cubre */
+    /* _fmemmove handles horizontal overlap within the same row as well */
+    
 
     if (__desttop < __top)
     {
-        /* Copiar hacia arriba: top -> bottom */
+        /* Copy top -> bottom */
         for (i = 0; i < height; i++)
         {
             unsigned int src_offset = ((__top - 1 + i) * sw + (__left - 1)) << 1;
@@ -650,7 +673,7 @@ int movetext(int __left, int __top, int __right, int __bottom, int __destleft, i
     }
     else
     {
-        /* Copiar hacia abajo: bottom -> top */
+        /* Copy bottom -> top */
         for (i = height; i > 0; i--)
         {
             unsigned int src_offset = ((__top - 1 + i - 1) * sw + (__left - 1)) << 1;
@@ -663,81 +686,83 @@ int movetext(int __left, int __top, int __right, int __bottom, int __destleft, i
 
 
 /* ----------------------------------------------------------------------------------------------------------------- */
-void gotoxy(int __x, int __y)
+inline void gotoxy(int __x, int __y)
 {
-	if (__x < 1 || __y < 1 || __x > (int) (__ti.winright - __ti.winleft + 1) || __y > (int) (__ti.winbottom - __ti.wintop + 1))
-	{
+	if (__x < 1 || __y < 1 ||
+	    __x > (int)(__ti.winright - __ti.winleft + 1) ||
+	    __y > (int)(__ti.winbottom - __ti.wintop + 1))
 		return;
-	}
-	_settextposition((short) __y, (short) __x);
+	/* Watcom expects (row, col) = (y, x) */
+	_settextposition((short)__y, (short)__x);
 }
 
 
 /* ----------------------------------------------------------------------------------------------------------------- */
-void _setcursortype(int __cur_t)
+inline void _setcursortype(int __cur_t)
 {
 	short cursor;
-	
-	switch (__cur_t)
-	{
-		case _NOCURSOR:
-			cursor = 0x2000;
-			break;
-		case _SOLIDCURSOR:
-			cursor = 0x0007;
-			break;
-		case _NORMALCURSOR:
-		default:
-			cursor = 0x0607;
+
+	switch (__cur_t) {
+	case _NOCURSOR:
+		cursor = 0x2000;
+		break;
+	case _SOLIDCURSOR:
+		cursor = 0x0007;
+		break;
+	case _NORMALCURSOR:
+	default:
+		cursor = 0x0607;
+		break;
 	}
 	_settextcursor(cursor);
 }
 
 
 /* ----------------------------------------------------------------------------------------------------------------- */
-void textattr(int __newattr)
+/*
+ * Borland attribute layout: bits 0-3 = foreground, 4-6 = background, 7 = blink.
+ * Watcom: text colour 0-15, add 16 for blink; background 0-7.
+ */
+inline void textattr(int __newattr)
 {
-	/* Borland attribute: bits 0-3 text color, bits 4-6 background, bit 7 blink. */
-	/* Watcom: text color 0-15, +16 to blink; background 0-7 */
-	__ti.attribute = __newattr;
-	_settextcolor((short) ((__newattr & 0x0F) | ((__newattr & BLINK) ? 16 : 0)));
-	_setbkcolor((long) ((__newattr >> 4) & 0x07));
+	__ti.attribute = (unsigned short)__newattr;
+	_settextcolor((short)((__newattr & 0x0F) | ((__newattr & BLINK) ? 16 : 0)));
+	_setbkcolor((long)((__newattr >> 4) & 0x07));
 }
 
 
 /* ----------------------------------------------------------------------------------------------------------------- */
-void highvideo(void)
+inline void highvideo(void)
 {
 	textcolor((__ti.attribute & 0x8F) | 0x08);
 }
 
 
 /* ----------------------------------------------------------------------------------------------------------------- */
-void lowvideo(void)
+inline void lowvideo(void)
 {
 	textcolor(__ti.attribute & 0x87);
 }
 
 
 /* ----------------------------------------------------------------------------------------------------------------- */
-void normvideo(void)
+inline void normvideo(void)
 {
 	textattr(__ti.normattr);
 }
 
 
-
 /* ----------------------------------------------------------------------------------------------------------------- */
-void textbackground(int __newcolor)
+inline void textbackground(int __newcolor)
 {
 	textattr((__ti.attribute & 0x8F) | ((__newcolor & 0x07) << 4));
 }
 
 
 /* ----------------------------------------------------------------------------------------------------------------- */
-void textcolor(int __newcolor)
+inline void textcolor(int __newcolor)
 {
-	/* The color may carry BLINK, so the background is kept and the rest comes from the new color */
+	/* Keep current background; new colour may include BLINK */
 	textattr((__ti.attribute & 0x70) | (__newcolor & 0x8F));
 }
 
@@ -777,18 +802,18 @@ void textmode(int __newmode)
 }
 
 /* ----------------------------------------------------------------------------------------------------------------- */
-void window(int __left, int __top, int __right, int __bottom)
+inline void window(int __left, int __top, int __right, int __bottom)
 {
-	if (__left < 1 || __top < 1 || __right < __left || __bottom < __top
-		|| __right > __ti.screenwidth || __bottom > __ti.screenheight)
-	{
+	if (__left < 1 || __top < 1 || __right < __left || __bottom < __top ||
+	    __right > __ti.screenwidth || __bottom > __ti.screenheight)
 		return;
-	}
-	__ti.winleft = __left;
-	__ti.wintop = __top;
-	__ti.winright = __right;
-	__ti.winbottom = __bottom;
-	_settextwindow((short) __top, (short) __left, (short) __bottom, (short) __right);
+
+	__ti.winleft   = (unsigned short)__left;
+	__ti.wintop    = (unsigned short)__top;
+	__ti.winright  = (unsigned short)__right;
+	__ti.winbottom = (unsigned short)__bottom;
+	/* Watcom API is (top, left, bottom, right) = (row1, col1, row2, col2) */
+	_settextwindow((short)__top, (short)__left, (short)__bottom, (short)__right);
 }
 
 
@@ -806,7 +831,13 @@ void window(int __left, int __top, int __right, int __bottom)
 
 #undef cprintf
 /* ----------------------------------------------------------------------------------------------------------------- */
-int cprintf (const char *__format, ...)
+/*
+ * Formatted output to the current text window.
+ * Uses _outmem (not _outtext) because the length is already known after
+ * formatting. _outmem writes exactly 'len' characters with no control-char
+ * interpretation and avoids an extra strlen scan.
+ */
+int cprintf(const char *__format, ...)
 {
 	int r;
 	va_list ap;
@@ -816,22 +847,28 @@ int cprintf (const char *__format, ...)
 	r = _vsnprintf(buffer, sizeof(buffer), __format, ap);
 	va_end(ap);
 
-	buffer[PRINTFBUF_SIZE - 1] = 0;		/* _vsnprintf (estilo Microsoft) no termina en 0 si trunca */
+	/* Microsoft-style _vsnprintf does not guarantee a trailing NUL on truncation */
+	buffer[PRINTFBUF_SIZE - 1] = '\0';
 	if (r < 0)
-	{
-		r = strlen(buffer);
-	}
-	_outtext(buffer);
-	return(r);
+		r = (int)strlen(buffer);
+
+	_outmem(buffer, (short)r);
+	return r;
 }
 
 
 #undef cputs
 /* ----------------------------------------------------------------------------------------------------------------- */
-int cputs(const char *__str)
+/*
+ * Write a null-terminated string to the current text window.
+ * Prefer _outmem over _outtext: length is known, no control-char handling,
+ * and it is typically faster (no terminator scan inside the library).
+ */
+inline int cputs(const char *__str)
 {
-	_outtext((char *) __str);
-	return(strlen(__str));	
+	size_t len = strlen(__str);
+	_outmem((char *)__str, (short)len);
+	return (int)len;
 }
 
 
@@ -839,120 +876,96 @@ int cputs(const char *__str)
 /* ----------------------------------------------------------------------------------------------------------------- */
 char *getpass(const char *__prompt)
 {
-	static char str[PASS_MAX + 1];	/* obligatorio: se devuelve str, debe sobrevivir a la llamada */
+	static char str[PASS_MAX + 1];  /* must be static: returned pointer must outlive the call */
 	int length = 0;
 	int ch;
 	int x, y;
 	struct rccoord cur;
 
 	cputs(__prompt);
-	cur = _gettextposition();     /* posicion real del cursor */
+	cur = _gettextposition();
 	x = cur.col;
 	y = cur.row;
 
-	for (;;)
-	{
+	for (;;) {
 		ch = getch();
 		if (ch == '\r')
-		{
-			break;				/* sin esto, el INTRO se guardaba en la contrasena */
-		}
-		if (ch == 0)
-		{
-			getch();			/* consumir scancode, lo ignoramos */
-		}
-		else if (ch == '\b')
-		{
-			if (length > 0)
-			{
+			break;                  /* Enter must not be stored in the password */
+		if (ch == 0) {
+			getch();                /* consume scancode of extended key, ignore it */
+		} else if (ch == '\b') {
+			if (length > 0) {
 				--length;
 				gotoxy(x + length, y);
 				putch(' ');
 				gotoxy(x + length, y);
 			}
-		}
-		else if (length < PASS_MAX)
-		{
+		} else if (length < PASS_MAX) {
 			putch('*');
 			str[length++] = (char)ch;
 		}
 	}
-	str[length] = 0;
-	return(str);
+	str[length] = '\0';
+	return str;
 }
 
 
 /* ----------------------------------------------------------------------------------------------------------------- */
-//int getch(void);
-//Already available in Watcom
-
+/* getch() is already provided by Watcom <conio.h> */
 
 
 /* ----------------------------------------------------------------------------------------------------------------- */
-int getche(void)
+inline int getche(void)
 {
 	int ch = getch();
-	int sc;
 
-	if (ch == 0)
-	{
-		sc = getch();            /* scan code of extended key */
-		return (KEY_SPECIAL | sc);
+	if (ch == 0) {
+		int sc = getch();           /* scancode of extended key */
+		return KEY_SPECIAL | sc;
 	}
-	else
-	{
-		putch(ch);
-		return(ch);
-	}
+	putch(ch);
+	return ch;
 }
 
 
 /* ----------------------------------------------------------------------------------------------------------------- */
-//int kbhit(void);
-//Already available in Watcom
-
+/* kbhit() is already provided by Watcom <conio.h> */
 
 
 /* ----------------------------------------------------------------------------------------------------------------- */
-int putch(int __c)
+/*
+ * Single-character output. Uses _outmem with length 1 (fastest path,
+ * no control-character interpretation).
+ */
+inline int putch(int __c)
 {
-	char chbuf;
-	chbuf = (char)__c;
-
+	char chbuf = (char)__c;
 	_outmem(&chbuf, 1);
-	return(__c);
+	return __c;
 }
 
 
-
 /* ----------------------------------------------------------------------------------------------------------------- */
-//int ungetch(int __ch);
-//Already available in Watcom
-
+/* ungetch() is already provided by Watcom <conio.h> */
 
 
 /* ----------------------------------------------------------------------------------------------------------------- */
-int wherex(void)
+inline int wherex(void)
 {
-	struct rccoord cur;
-
-	cur = _gettextposition();
-	return((int) cur.col);
+	struct rccoord cur = _gettextposition();
+	return (int)cur.col;
 }
 
 
 /* ----------------------------------------------------------------------------------------------------------------- */
-int wherey(void)
+inline int wherey(void)
 {
-	struct rccoord cur;
-
-	cur = _gettextposition();
-	return((int) cur.row);
+	struct rccoord cur = _gettextposition();
+	return (int)cur.row;
 }
 
 /* ----------------------------------------------------------------------------------------------------------------- */
-//void delay(unsigned int ms)
-//Already available in Watcom
+/* delay() is already provided by Watcom */
 
 
 
